@@ -1,1 +1,89 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <semaphore.h>
+#include <sys/wait.h>
+#include <string.h>
+#include <fcntl.h>
 
+#define MSG_SIZE 256
+
+void proceso_usuario(int read_fd, int write_fd, const char* nombre) {
+    char mensaje[MSG_SIZE];
+    char buffer[MSG_SIZE + 50]; // Buffer para incluir el nombre del usuario
+
+    while (1) {
+
+        // Leer mensaje del usuario
+        printf("%s: ", nombre);
+        fgets(mensaje, MSG_SIZE, stdin);
+
+        // Agregar nombre al mensaje
+        snprintf(buffer, sizeof(buffer), "%s: %s", nombre, mensaje);
+
+        sem_wait(sem_write);
+
+        // Enviar mensaje
+        write(write_fd, buffer, strlen(buffer) + 1);
+        
+        //sem_post(sem_read);
+
+        //sem_wait(sem_read);
+
+        // Leer y mostrar mensaje recibido
+        read(read_fd, buffer, sizeof(buffer));
+        printf("Mensaje recibido -> %s\n", buffer);
+        
+        //sem_post(sem_write);
+    }
+
+}
+
+int main() {
+    int pipe1[2], pipe2[2];
+    pid_t pid1, pid2;
+
+    if (pipe(pipe1) == -1 || pipe(pipe2) == -1) {
+        perror("pipe");
+        exit(1);
+    }
+
+    pid1 = fork();
+    if (pid1 == -1) {
+        perror("fork");
+        exit(1);
+    }
+
+    if (pid1 == 0) {
+        // Proceso hijo 1
+        close(pipe1[1]);
+        close(pipe2[0]);
+        proceso_usuario(pipe1[0], pipe2[1], "Usuario1");
+        exit(0);
+    }
+
+    pid2 = fork();
+    if (pid2 == -1) {
+        perror("fork");
+        exit(1);
+    }
+
+    if (pid2 == 0) {
+        // Proceso hijo 2
+        close(pipe1[0]);
+        close(pipe2[1]);
+        proceso_usuario(pipe2[0], pipe1[1], "Usuario2");
+        exit(0);
+    }
+
+    // Proceso padre
+    close(pipe1[0]);
+    close(pipe1[1]);
+    close(pipe2[0]);
+    close(pipe2[1]);
+
+    wait(NULL);
+    wait(NULL);
+
+    return 0;
+}
